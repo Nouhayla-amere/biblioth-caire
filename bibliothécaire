@@ -1,0 +1,226 @@
+from django.db import models
+
+class Membre(models.Model):
+    nom = models.CharField(max_length=255)
+    email = models.EmailField()
+    emprunts_en_cours = models.IntegerField(default=0)
+    bloque = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.nom
+from django import forms
+from .models import Membre
+
+class MembreForm(forms.ModelForm):
+    class Meta:
+        model = Membre
+        fields = ['nom', 'prenom', 'email']
+
+from django.shortcuts import render, redirect
+from .forms import MembreForm
+
+def creer_membre(request):
+    if request.method == 'POST':
+        form = MembreForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('liste_membres')
+    else:
+        form = MembreForm()
+    return render(request, 'creer_membre.html', {'form': form})
+
+from django.shortcuts import render
+from .models import Membre
+
+def liste_membres(request):
+    membres = Membre.objects.all()
+    return render(request, 'liste_membres.html', {'membres': membres})
+
+<h2>Liste des Membres</h2>
+<table>
+    <tr>
+        <th>Nom</th>
+        <th>Email</th>
+        <th>Emprunts en cours</th>
+        <th>Statut</th>
+        <th>Actions</th>
+    </tr>
+    {% for membre in membres %}
+        <tr>
+            <td>{{ membre.nom }}</td>
+            <td>{{ membre.email }}</td>
+            <td>{{ membre.emprunts_en_cours }}</td>
+            <td>{{ membre.bloque|yesno:"Bloqué,Non bloqué" }}</td>
+            <td><a href="{% url 'mettre_a_jour_membre' membre.id %}">Modifier</a></td>
+        </tr>
+    {% endfor %}
+</table>
+from django.shortcuts import render, get_object_or_404, redirect
+from .models import Membre
+from .forms import MembreForm
+
+def mettre_a_jour_membre(request, membre_id):
+    membre = get_object_or_404(Membre, id=membre_id)
+    if request.method == 'POST':
+        form = MembreForm(request.POST, instance=membre)
+        if form.is_valid():
+            form.save()
+            return redirect('liste_membres')
+    else:
+        form = MembreForm(instance=membre)
+    return render(request, 'mettre_a_jour_membre.html', {'form': form})
+<h2>Modifier le Membre</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Mettre à jour</button>
+</form>
+from django.shortcuts import render
+from .models import Media
+
+def liste_mediatheque(request):
+    medias = Media.objects.all()
+    return render(request, 'liste_mediatheque.html', {'medias': medias})
+<h2>Liste des Médias</h2>
+<table>
+    <tr>
+        <th>Titre</th>
+        <th>Type</th>
+        <th>Disponibilité</th>
+        <th>Actions</th>
+    </tr>
+    {% for media in medias %}
+        <tr>
+            <td>{{ media.titre }}</td>
+            <td>{{ media.type_media }}</td>
+            <td>{{ media.disponible|yesno:"Disponible,Indisponible" }}</td>
+            <td><a href="{% url 'ajouter_emprunt' media.id %}">Emprunter</a></td>
+        </tr>
+    {% endfor %}
+</table>
+from django.shortcuts import get_object_or_404, redirect
+from .models import Media, Membre, Emprunt
+
+def emprunter_media(request, media_id):
+    media = get_object_or_404(Media, id=media_id)
+    membre = Membre.objects.get(id=request.user.id)
+
+    if membre.emprunts_en_cours < 3 and not membre.bloque and media.disponible:
+        # Créer l'emprunt
+        emprunt = Emprunt.objects.create(membre=membre, media=media)
+        membre.emprunts_en_cours += 1
+        membre.save()
+        media.disponible = False
+        media.save()
+        return redirect('liste_emprunts')  # Rediriger vers la liste des emprunts
+    else:
+        return redirect('erreur_emprunt')  # Redirection en cas d'erreur
+from django import forms
+from .models import Media
+
+class MediaForm(forms.ModelForm):
+    class Meta:
+        model = Media
+        fields = ['titre', 'type_media', 'disponible']
+from django.shortcuts import render, redirect
+from .forms import MediaForm
+
+def ajouter_media(request):
+    if request.method == 'POST':
+        form = MediaForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('liste_mediatheque')
+    else:
+        form = MediaForm()
+    return render(request, 'ajouter_media.html', {'form': form})
+<h2>Ajouter un Média</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Ajouter</button>
+</form>
+def retourner_emprunt(request, emprunt_id):
+    emprunt = get_object_or_404(Emprunt, id=emprunt_id)
+    media = emprunt.media
+    membre = emprunt.membre
+
+    # Rendre le média disponible
+    media.disponible = True
+    media.save()
+    membre.emprunts_en_cours -= 1
+    membre.save()
+
+    emprunt.date_retour = timezone.now().date()  # Marquer l'emprunt comme retourné
+    emprunt.save()
+
+    return redirect('liste_emprunts')
+if membre.emprunts_en_cours < 3:
+    # Permettre l'emprunt
+else:
+    # Empêcher l'emprunt, afficher un message d'erreur
+from django.db import models
+from django.utils import timezone
+
+class Emprunt(models.Model):
+    membre = models.ForeignKey(Membre, on_delete=models.CASCADE)
+    media = models.ForeignKey(Media, on_delete=models.CASCADE)
+    date_emprunt = models.DateField(default=timezone.now)
+    date_retour = models.DateField(null=True, blank=True)
+
+    def est_en_retard(self):
+        if self.date_retour is None:
+            return timezone.now().date() > self.date_emprunt + timedelta(days=7)
+        return False
+def emprunter_media(request, media_id):
+    media = get_object_or_404(Media, id=media_id)
+    membre = Membre.objects.get(id=request.user.id)
+ # Vérifier si le membre a un emprunt en retard
+    emprunt_en_retard = Emprunt.objects.filter(membre=membre, date_retour__isnull=True).filter(date_emprunt__lte=timezone.now() - timedelta(days=7)).exists()
+
+    if membre.emprunts_en_cours < 3 and not membre.bloque and media.disponible and not emprunt_en_retard:
+        # Créer l'emprunt
+        emprunt = Emprunt.objects.create(membre=membre, media=media)
+        membre.emprunts_en_cours += 1
+        membre.save()
+        media.disponible = False
+        media.save()
+        return redirect('liste_emprunts')
+    else:
+        return redirect('erreur_emprunt')  # Redirection si le membre a un emprunt en retard ou dépasse le nombre d'emprunts autorisés
+
+  # Modèle pour les emprunts
+class Emprunt(models.Model):
+    membre = models.ForeignKey(Membre, on_delete=models.CASCADE)
+    media = models.ForeignKey(Media, on_delete=models.CASCADE)
+    date_emprunt = models.DateField(auto_now_add=True)
+    date_retour = models.DateField(null=True, blank=True)
+
+    def est_en_retard(self):
+        if self.date_retour is None:
+            return timezone.now().date() > self.date_emprunt + timedelta(days=7)
+        return False
+
+    def __str__(self):
+        return f"{self.membre} - {self.media}"
+
+from django.test import TestCase
+from django.utils import timezone
+from .models import Membre, Media, Emprunt
+from datetime import timedelta
+
+class EmpruntTest(TestCase):
+    
+    def setUp(self):
+        self.membre = Membre.objects.create(nom="Test", prenom="User", email="test@user.com")
+        self.media = Media.objects.create(titre="Livre Test", type_media="Livre", disponible=True)
+    
+    def test_emprunt_limite(self):
+        Emprunt.objects.create(membre=self.membre, media=self.media, date_emprunt=timezone.now())
+        self.membre.emprunts_en_cours = 1
+        self.membre.save()
+        self.assertEqual(self.membre.emprunts_en_cours, 1)
+        
+    def test_emprunt_en_retard(self):
+        emprunt = Emprunt.objects.create(membre=self.membre, media=self.media, date_emprunt=timezone.now() - timedelta(days=10))
+        self.assertTrue(emprunt.est_en_retard())
