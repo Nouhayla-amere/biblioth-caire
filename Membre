@@ -1,0 +1,35 @@
+from django.shortcuts import render
+from .models import Media
+
+def liste_mediatheque_membre(request):
+    # Récupérer tous les médias qui ne sont pas des jeux de plateau
+    medias = Media.objects.exclude(type_media='Jeu de plateau')
+    return render(request, 'liste_mediatheque_membre.html', {'medias': medias})
+<h2>Liste des Médias</h2>
+<table>
+    <tr>
+        <th>Titre</th>
+        <th>Type</th>
+        <th>Disponibilité</th>
+    </tr>
+    {% for media in medias %}
+        <tr>
+            <td>{{ media.titre }}</td>
+            <td>{{ media.type_media }}</td>
+            <td>{{ media.disponible|yesno:"Disponible,Indisponible" }}</td>
+        </tr>
+    {% endfor %}
+</table>
+from django.db import models
+
+
+class Membre(models.Model):
+    nom = models.CharField(max_length=100)
+    prenom = models.CharField(max_length=100)
+    email = models.EmailField(unique=True)
+    date_inscription = models.DateField(auto_now_add=True)
+    emprunts_en_cours = models.IntegerField(default=0)
+    bloque = models.BooleanField(default=False)  # Bloqué si emprunts en retard
+
+
+pip install -r requirements.txt
