@@ -1,0 +1,9 @@
+*.pyc
+__pycache__/
+db.sqlite3
+venv/
+*.log
+.env
+git add .gitignore
+git commit -m "Ajout du fichier .gitignore"
+git push origin main
